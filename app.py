@@ -2,15 +2,18 @@ import streamlit as st
 import pandas as pd
 import random
 import os
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
-# --- Configuration --------------------------------------------------
-st.set_page_config(
-    page_title="Daily Jesus Check-In",
-    page_icon="✝️",
-    layout="wide"
-)
+# --- App Configuration --------------------------------------------------
+st.set_page_config(page_title="Daily Jesus Check-In", page_icon="✝️")
 
+# --- Data Storage -------------------------------------------------------
+DATA_FILE = "gratitude_entries.csv"
+if not os.path.exists(DATA_FILE):
+    pd.DataFrame(columns=["timestamp", "entry", "verse_ref", "verse_text"]) \
+      .to_csv(DATA_FILE, index=False)
+
+# --- Bible Verses -------------------------------------------------------
 BIBLE_VERSES = {
     "gratitude": [
         ("1 Thessalonians 5:18", "Give thanks in all circumstances; for this is the will of God in Christ Jesus for you."),
@@ -23,72 +26,186 @@ BIBLE_VERSES = {
     "peace": [
         ("John 14:27", "Peace I leave with you; my peace I give to you. Not as the world gives do I give to you."),
         ("Philippians 4:6-7", "Do not be anxious about anything, but in everything by prayer and supplication with thanksgiving let your requests be made known to God."),
-    ]
+    ],
 }
 
-DATA_FILE = "gratitude_entries.csv"
+# --- Bordle Word List (200 hand-curated five-letter Bible words) --------
+WORDLE_WORDS = [
+    # 1–100
+    "JESUS","FAITH","GRACE","MERCY","PEACE","TRUTH","LIGHT","GLORY","POWER","BLOOD",
+    "BREAD","ANGEL","DEVIL","CROSS","ALPHA","BABEL","SHEEP","BIRDS","HEART","SOULS",
+    "WORDS","NAMES","TRIBE","ELDER","THREE","SEVEN","EIGHT","FIRST","WATER","SMITE",
+    "SPEAK","WRITE","SHALT","WHICH","THEIR","THESE","THOSE","THERE","WHERE","OTHER",
+    "WHILE","AFTER","WOULD","COULD","MIGHT","UNDER","AGAIN","ABOUT","SHALL","DAVID",
+    "MOSES","JAMES","PETER","ISAAC","NAOMI","JUDAS","SARAH","HAGAR","RAHAB","ABIDE",
+    "REIGN","TRUST","SONGS","PSALM","REVEL","ABRAM","TRIAL","DEATH","LIVES","EARTH",
+    "FLESH","TIMES","STOOD","MOUNT","EGYPT","RIVER","SWORD","MONEY","SPOKE","WROTE",
+    "LOVES","SIGNS","SINCE","SAINT","THINE","SHINE","BLESS","HONOR","GREAT","HORSE",
+    "KINGS","CROWN","CLOUD","STONE","SLEPT","GODLY","FLOUR","BRIDE","ALIVE","CHOSE",
 
-# Ensure data file exists
-if not os.path.exists(DATA_FILE):
-    pd.DataFrame(columns=["timestamp", "entry", "verse_ref", "verse_text"]).to_csv(DATA_FILE, index=False)
+    # 101–200
+    "ELIAS","JONAH","MICAH","HOSEA","NAHUM","ABNER","TAMAR","SIMON","NABAL","JUDAH",
+    "LAZAR","QUAKE","SALVA","SAVED","CLEAN","HELPS","GUIDE","FIELD","VINES","GRAIN",
+    "FRUIT","SEEDS","SHEOL","ABYSS","SHOES","WELLS","WHEAT","YEAST","OLIVE","BRASS",
+    "ALTAR","TEMPLE","GATES","WALLS","PEARL","CEDAR","OCEAN","SMOKE","FLAME","FIRES",
+    "FLOOD","TOWER","TENTS","DOVES","SNAKE","TORCH","SPICE","FEAST","BEGIN","SPOIL",
+    "HASTE","TREAD","SHIFT","SHARE","GIVES","TAKEN","TOUCH","HEARD","CALMS","BIBLE",
+    "VERSE","QUOTE","FOUND","FINAL","GLOOM","LOYAL","HUMOR","HAPPY","GROWS","DWELL",
+    "WALKS","LEAPS","CARRY","BOUND","SERVE","PRAIS","FENCE","VALLE","TABLE","GUEST",
+    "CHEST","SPEAR","BARNS","CHOIR","PIPES","FOCUS","FOODS","MEATS","BANNS","SALTS",
+    "SANDS","CROWS","OWLS","LIONS","FOOLS","WINES","KNEEL","RAISE","HYMNS","MARCH",
+]
 
-# --- Sidebar Menu ----------------------------------------------------
-menu = st.sidebar.radio(
+# --- Sidebar Menu -------------------------------------------------------
+page = st.sidebar.radio(
     "📖 Navigate",
-    ("Check-In", "Daily Verse", "History", "About")
+    ("Check-In", "Daily Verse", "Bible Wordle", "Verse Jumble", "History", "Achievements", "About")
 )
 
-# --- Pages -----------------------------------------------------------
-if menu == "Check-In":
+# --- Page: Check-In -----------------------------------------------------
+if page == "Check-In":
     st.title("🙏 Daily Jesus Check-In")
     st.header("Reflect & Give Thanks")
-    st.write("Choose a theme to guide your reflection and receive a fitting Bible verse.")
-
-    theme = st.selectbox("Select a theme", list(BIBLE_VERSES.keys()))
+    theme = st.selectbox("Theme", list(BIBLE_VERSES.keys()))
     verse_ref, verse_text = random.choice(BIBLE_VERSES[theme])
     st.markdown(f"> **{verse_ref}** — _{verse_text}_")
 
-    st.text_area("What are you grateful for today?", key="gratitude_input", height=150)
-
+    gratitude = st.text_area("What are you grateful for today?", height=150)
     if st.button("Submit 😊"):
-        entry = st.session_state.gratitude_input.strip()
-        if entry:
-            timestamp = datetime.now().isoformat(sep=' ', timespec='seconds')
-            new_row = {"timestamp": timestamp, "entry": entry, "verse_ref": verse_ref, "verse_text": verse_text}
+        text = gratitude.strip()
+        if text:
+            ts = datetime.now().isoformat(sep=" ", timespec="seconds")
+            new_row = {
+                "timestamp": ts,
+                "entry": text,
+                "verse_ref": verse_ref,
+                "verse_text": verse_text
+            }
             df = pd.read_csv(DATA_FILE)
-            df = df.append(new_row, ignore_index=True)
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             df.to_csv(DATA_FILE, index=False)
             st.success("🎉 Your gratitude has been recorded!")
             st.balloons()
-            st.progress(100)
         else:
             st.error("Please share something you're grateful for.")
 
-elif menu == "Daily Verse":
+# --- Page: Daily Verse --------------------------------------------------
+elif page == "Daily Verse":
     st.title("📜 Daily Bible Verse")
     category = st.selectbox("Choose category", list(BIBLE_VERSES.keys()))
-    verse_ref, verse_text = random.choice(BIBLE_VERSES[category])
-    st.markdown(f"## {verse_ref}")
-    st.markdown(f"> _{verse_text}_")
-    st.write("---")
-    st.info("Let this verse guide your day! You can go to Check-In to reflect.")
+    ref, text = random.choice(BIBLE_VERSES[category])
+    st.subheader(ref)
+    st.markdown(f"> _{text}_")
+    st.info("Head back to Check-In to reflect on it!")
 
-elif menu == "History":
+# --- Page: Bible Wordle -------------------------------------------------
+elif page == "Bible Wordle":
+    st.title("🟩 Bible Wordle 🟨")
+    # daily seed ensures one puzzle per day
+    today_seed = int(date.today().strftime("%Y%m%d"))
+    random.seed(today_seed)
+    target = random.choice(WORDLE_WORDS)
+
+    # initialize session state
+    if "wordle_guesses" not in st.session_state:
+        st.session_state.wordle_guesses = []
+        st.session_state.solved = False
+
+    def evaluate_guess(guess):
+        feedback = []
+        for i, c in enumerate(guess):
+            if c == target[i]:
+                feedback.append("🟩")
+            elif c in target:
+                feedback.append("🟨")
+            else:
+                feedback.append("⬜")
+        return "".join(feedback)
+
+    if not st.session_state.solved and len(st.session_state.wordle_guesses) < 6:
+        guess = st.text_input("Enter your 5-letter guess:", max_chars=5).upper()
+        if st.button("Guess"):
+            if len(guess) != 5 or guess not in WORDLE_WORDS:
+                st.error("Pick one of the Bible words listed above!")
+            else:
+                fb = evaluate_guess(guess)
+                st.session_state.wordle_guesses.append((guess, fb))
+                if guess == target:
+                    st.session_state.solved = True
+
+    for g, fb in st.session_state.wordle_guesses:
+        st.write(f"{g}   {fb}")
+
+    if st.session_state.solved:
+        st.success(f"You got it! Today’s word was **{target}**.")
+        st.balloons()
+    elif len(st.session_state.wordle_guesses) >= 6:
+        st.error(f"Out of guesses! The word was **{target}**.")
+
+    if st.button("Reset Wordle"):
+        st.session_state.wordle_guesses = []
+        st.session_state.solved = False
+
+# --- Page: Verse Jumble -------------------------------------------------
+elif page == "Verse Jumble":
+    st.title("🔀 Verse Jumble 🔀")
+    verse_ref, verse_text = random.choice(random.choice(list(BIBLE_VERSES.values())))
+    words = verse_text.split()
+    random.shuffle(words)
+    scrambled = " ".join(words)
+    st.markdown(f"**Scrambled verse:**  \n{scrambled}")
+
+    answer = st.text_area("Unscramble back to the original verse:")
+    if st.button("Check"):
+        if answer.strip().lower() == verse_text.lower():
+            st.success("🎉 Perfect! You’ve unscrambled it.")
+        else:
+            st.error("Not quite—give it another try!")
+
+# --- Page: History ------------------------------------------------------
+elif page == "History":
     st.title("📚 Gratitude History")
     df = pd.read_csv(DATA_FILE)
     if df.empty:
-        st.warning("No entries yet. Head to Check-In to add your first gratitude.")
+        st.warning("No entries yet. Use Check-In to add your first gratitude.")
     else:
-        st.dataframe(df.sort_values(by="timestamp", ascending=False), use_container_width=True)
+        st.table(df.sort_values("timestamp", ascending=False))
 
-elif menu == "About":
+# --- Page: Achievements -------------------------------------------------
+elif page == "Achievements":
+    st.title("🏆 Achievements 🏆")
+    df = pd.read_csv(DATA_FILE)
+    if df.empty:
+        st.info("No check-ins yet—start on the Check-In page!")
+    else:
+        dates = {
+            datetime.fromisoformat(ts).date()
+            for ts in df["timestamp"]
+        }
+        streak = 0
+        d = date.today()
+        while d in dates:
+            streak += 1
+            d -= timedelta(days=1)
+
+        st.subheader(f"Current Check-In Streak: {streak} days")
+        if streak >= 30:
+            st.markdown("**Gold Badge** 🏅")
+        elif streak >= 7:
+            st.markdown("**Silver Badge** 🥈")
+        elif streak >= 3:
+            st.markdown("**Bronze Badge** 🥉")
+        else:
+            st.markdown("_No badge yet—keep going!_")
+
+# --- Page: About --------------------------------------------------------
+else:
     st.title("ℹ️ About This App")
     st.markdown("""
-    **Daily Jesus Check-In** helps you:
-    - Reflect on God's goodness daily  
-    - Record gratitude entries  
-    - Receive relevant Bible verses  
-    - Review your entries over time  
+    **Daily Jesus Check-In** now includes:
+    - A Bible-themed Wordle game  
+    - A fun Verse Jumble puzzle  
+    - Achievements & badges for streaks  
 
-    Built with Streamlit by Chris Comiskey.  
+    Built with 💖 by Chris Comiskey.
     """)
