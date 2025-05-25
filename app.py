@@ -7,11 +7,28 @@ from datetime import datetime, date, timedelta
 # --- App Configuration --------------------------------------------------
 st.set_page_config(page_title="Daily Jesus Check-In", page_icon="✝️")
 
-# --- Data Storage -------------------------------------------------------
+# --- Data Storage Setup -------------------------------------------------
 DATA_FILE = "gratitude_entries.csv"
-if not os.path.exists(DATA_FILE):
-    pd.DataFrame(columns=["timestamp", "entry", "verse_ref", "verse_text"]) \
-      .to_csv(DATA_FILE, index=False)
+
+def load_entries():
+    """Load gratitude entries into a DataFrame (create file if missing)."""
+    if not os.path.exists(DATA_FILE):
+        pd.DataFrame(columns=["timestamp", "entry", "verse_ref", "verse_text"]) \
+          .to_csv(DATA_FILE, index=False)
+    df = pd.read_csv(DATA_FILE)
+    # Parse timestamps so sorting works
+    if not df.empty:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+    return df
+
+def save_entry(entry_row):
+    """Append a single entry (dict) to the CSV."""
+    df = load_entries()
+    new_df = pd.DataFrame([entry_row])
+    df = pd.concat([df, new_df], ignore_index=True)
+    # Ensure timestamp is string for CSV
+    df["timestamp"] = df["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    df.to_csv(DATA_FILE, index=False)
 
 # --- Bible Verses -------------------------------------------------------
 BIBLE_VERSES = {
@@ -29,7 +46,7 @@ BIBLE_VERSES = {
     ],
 }
 
-# --- Bordle Word List (200 hand-curated five-letter Bible words) --------
+# --- Bordle Word List (first 200 hand-curated words) -------------------
 WORDLE_WORDS = [
     # 1–100
     "JESUS","FAITH","GRACE","MERCY","PEACE","TRUTH","LIGHT","GLORY","POWER","BLOOD",
@@ -42,7 +59,6 @@ WORDLE_WORDS = [
     "FLESH","TIMES","STOOD","MOUNT","EGYPT","RIVER","SWORD","MONEY","SPOKE","WROTE",
     "LOVES","SIGNS","SINCE","SAINT","THINE","SHINE","BLESS","HONOR","GREAT","HORSE",
     "KINGS","CROWN","CLOUD","STONE","SLEPT","GODLY","FLOUR","BRIDE","ALIVE","CHOSE",
-
     # 101–200
     "ELIAS","JONAH","MICAH","HOSEA","NAHUM","ABNER","TAMAR","SIMON","NABAL","JUDAH",
     "LAZAR","QUAKE","SALVA","SAVED","CLEAN","HELPS","GUIDE","FIELD","VINES","GRAIN",
@@ -56,40 +72,42 @@ WORDLE_WORDS = [
     "SANDS","CROWS","OWLS","LIONS","FOOLS","WINES","KNEEL","RAISE","HYMNS","MARCH",
 ]
 
-# --- Sidebar Menu -------------------------------------------------------
+# --- Sidebar Navigation ----------------------------------------------
 page = st.sidebar.radio(
     "📖 Navigate",
     ("Check-In", "Daily Verse", "Bible Wordle", "Verse Jumble", "History", "Achievements", "About")
 )
 
-# --- Page: Check-In -----------------------------------------------------
+# --- Page: Check-In ---------------------------------------------------
 if page == "Check-In":
     st.title("🙏 Daily Jesus Check-In")
     st.header("Reflect & Give Thanks")
+
+    # pick a verse based on theme
     theme = st.selectbox("Theme", list(BIBLE_VERSES.keys()))
     verse_ref, verse_text = random.choice(BIBLE_VERSES[theme])
     st.markdown(f"> **{verse_ref}** — _{verse_text}_")
+    st.write("---")
 
+    # gratitude input
     gratitude = st.text_area("What are you grateful for today?", height=150)
-    if st.button("Submit 😊"):
+    if st.button("Submit 🙏"):
         text = gratitude.strip()
         if text:
-            ts = datetime.now().isoformat(sep=" ", timespec="seconds")
-            new_row = {
-                "timestamp": ts,
+            now = datetime.now()
+            entry = {
+                "timestamp": now,
                 "entry": text,
                 "verse_ref": verse_ref,
                 "verse_text": verse_text
             }
-            df = pd.read_csv(DATA_FILE)
-            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            df.to_csv(DATA_FILE, index=False)
+            save_entry(entry)
             st.success("🎉 Your gratitude has been recorded!")
             st.balloons()
         else:
             st.error("Please share something you're grateful for.")
 
-# --- Page: Daily Verse --------------------------------------------------
+# --- Page: Daily Verse ------------------------------------------------
 elif page == "Daily Verse":
     st.title("📜 Daily Bible Verse")
     category = st.selectbox("Choose category", list(BIBLE_VERSES.keys()))
@@ -98,90 +116,89 @@ elif page == "Daily Verse":
     st.markdown(f"> _{text}_")
     st.info("Head back to Check-In to reflect on it!")
 
-# --- Page: Bible Wordle -------------------------------------------------
+# --- Page: Bible Wordle ------------------------------------------------
 elif page == "Bible Wordle":
     st.title("🟩 Bible Wordle 🟨")
-    # daily seed ensures one puzzle per day
-    today_seed = int(date.today().strftime("%Y%m%d"))
-    random.seed(today_seed)
+
+    # Seed from date so one puzzle/day
+    seed = int(date.today().strftime("%Y%m%d"))
+    random.seed(seed)
     target = random.choice(WORDLE_WORDS)
 
-    # initialize session state
-    if "wordle_guesses" not in st.session_state:
-        st.session_state.wordle_guesses = []
+    # Set up session_state
+    if "guesses" not in st.session_state:
+        st.session_state.guesses = []
         st.session_state.solved = False
 
-    def evaluate_guess(guess):
+    def evaluate(word):
         feedback = []
-        for i, c in enumerate(guess):
-            if c == target[i]:
+        for i, ch in enumerate(word):
+            if ch == target[i]:
                 feedback.append("🟩")
-            elif c in target:
+            elif ch in target:
                 feedback.append("🟨")
             else:
                 feedback.append("⬜")
         return "".join(feedback)
 
-    if not st.session_state.solved and len(st.session_state.wordle_guesses) < 6:
-        guess = st.text_input("Enter your 5-letter guess:", max_chars=5).upper()
+    if not st.session_state.solved and len(st.session_state.guesses) < 6:
+        guess = st.text_input("Your 5-letter guess:", max_chars=5).upper()
         if st.button("Guess"):
             if len(guess) != 5 or guess not in WORDLE_WORDS:
-                st.error("Pick one of the Bible words listed above!")
+                st.error("Pick one of the listed Bible words!")
             else:
-                fb = evaluate_guess(guess)
-                st.session_state.wordle_guesses.append((guess, fb))
+                fb = evaluate(guess)
+                st.session_state.guesses.append((guess, fb))
                 if guess == target:
                     st.session_state.solved = True
 
-    for g, fb in st.session_state.wordle_guesses:
+    for g, fb in st.session_state.guesses:
         st.write(f"{g}   {fb}")
 
     if st.session_state.solved:
-        st.success(f"You got it! Today’s word was **{target}**.")
+        st.success(f"You got it! The word was **{target}**.")
         st.balloons()
-    elif len(st.session_state.wordle_guesses) >= 6:
-        st.error(f"Out of guesses! The word was **{target}**.")
+    elif len(st.session_state.guesses) >= 6:
+        st.error(f"Out of guesses—word was **{target}**.")
 
-    if st.button("Reset Wordle"):
-        st.session_state.wordle_guesses = []
+    if st.button("Reset"):
+        st.session_state.guesses = []
         st.session_state.solved = False
 
-# --- Page: Verse Jumble -------------------------------------------------
+# --- Page: Verse Jumble ------------------------------------------------
 elif page == "Verse Jumble":
     st.title("🔀 Verse Jumble 🔀")
     verse_ref, verse_text = random.choice(random.choice(list(BIBLE_VERSES.values())))
     words = verse_text.split()
     random.shuffle(words)
-    scrambled = " ".join(words)
-    st.markdown(f"**Scrambled verse:**  \n{scrambled}")
+    st.markdown(f"**Scrambled:**  \n{' '.join(words)}")
 
-    answer = st.text_area("Unscramble back to the original verse:")
+    answer = st.text_area("Unscramble to the original verse:")
     if st.button("Check"):
         if answer.strip().lower() == verse_text.lower():
-            st.success("🎉 Perfect! You’ve unscrambled it.")
+            st.success("🎉 Correct!")
         else:
-            st.error("Not quite—give it another try!")
+            st.error("Not quite—try again!")
 
-# --- Page: History ------------------------------------------------------
+# --- Page: History -----------------------------------------------------
 elif page == "History":
     st.title("📚 Gratitude History")
-    df = pd.read_csv(DATA_FILE)
+    df = load_entries()
     if df.empty:
-        st.warning("No entries yet. Use Check-In to add your first gratitude.")
+        st.warning("No entries yet. Record one on Check-In.")
     else:
-        st.table(df.sort_values("timestamp", ascending=False))
+        df = df.sort_values("timestamp", ascending=False)
+        # display only key columns
+        st.table(df[["timestamp", "entry", "verse_ref"]])
 
-# --- Page: Achievements -------------------------------------------------
+# --- Page: Achievements ------------------------------------------------
 elif page == "Achievements":
     st.title("🏆 Achievements 🏆")
-    df = pd.read_csv(DATA_FILE)
+    df = load_entries()
     if df.empty:
-        st.info("No check-ins yet—start on the Check-In page!")
+        st.info("Make your first Check-In to earn badges!")
     else:
-        dates = {
-            datetime.fromisoformat(ts).date()
-            for ts in df["timestamp"]
-        }
+        dates = {row.date() for row in df["timestamp"]}
         streak = 0
         d = date.today()
         while d in dates:
@@ -198,14 +215,14 @@ elif page == "Achievements":
         else:
             st.markdown("_No badge yet—keep going!_")
 
-# --- Page: About --------------------------------------------------------
+# --- Page: About -------------------------------------------------------
 else:
     st.title("ℹ️ About This App")
     st.markdown("""
     **Daily Jesus Check-In** now includes:
-    - A Bible-themed Wordle game  
-    - A fun Verse Jumble puzzle  
-    - Achievements & badges for streaks  
+    - A Bible-themed Wordle  
+    - A fun Verse Jumble  
+    - Streak-based Achievements  
 
     Built with 💖 by Chris Comiskey.
     """)
