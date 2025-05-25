@@ -7,7 +7,7 @@ from datetime import datetime, date, timedelta
 # --- App Configuration --------------------------------------------------
 st.set_page_config(page_title="Daily Jesus Check-In", page_icon="✝️")
 
-# --- Data Storage Setup -------------------------------------------------
+# --- Data Storage -------------------------------------------------------
 DATA_FILE = "gratitude_entries.csv"
 
 def load_entries():
@@ -42,9 +42,9 @@ BIBLE_VERSES = {
     ],
 }
 
-# --- Bordle Word List (first 200) ---------------------------------------
+# --- Bordle Word List --------------------------------------------------
 WORDLE_WORDS = [
-    # 1–100
+    # (first 200 hand-curated five-letter words)
     "JESUS","FAITH","GRACE","MERCY","PEACE","TRUTH","LIGHT","GLORY","POWER","BLOOD",
     "BREAD","ANGEL","DEVIL","CROSS","ALPHA","BABEL","SHEEP","BIRDS","HEART","SOULS",
     "WORDS","NAMES","TRIBE","ELDER","THREE","SEVEN","EIGHT","FIRST","WATER","SMITE",
@@ -55,7 +55,6 @@ WORDLE_WORDS = [
     "FLESH","TIMES","STOOD","MOUNT","EGYPT","RIVER","SWORD","MONEY","SPOKE","WROTE",
     "LOVES","SIGNS","SINCE","SAINT","THINE","SHINE","BLESS","HONOR","GREAT","HORSE",
     "KINGS","CROWN","CLOUD","STONE","SLEPT","GODLY","FLOUR","BRIDE","ALIVE","CHOSE",
-    # 101–200
     "ELIAS","JONAH","MICAH","HOSEA","NAHUM","ABNER","TAMAR","SIMON","NABAL","JUDAH",
     "LAZAR","QUAKE","SALVA","SAVED","CLEAN","HELPS","GUIDE","FIELD","VINES","GRAIN",
     "FRUIT","SEEDS","SHEOL","ABYSS","SHOES","WELLS","WHEAT","YEAST","OLIVE","BRASS",
@@ -74,7 +73,7 @@ page = st.sidebar.radio(
     ("Check-In", "Daily Verse", "Bible Wordle", "Verse Jumble", "History", "Achievements", "About")
 )
 
-# --- Page: Check-In ----------------------------------------------------
+# --- Page: Check-In ---------------------------------------------------
 if page == "Check-In":
     st.title("🙏 Daily Jesus Check-In")
     st.header("Reflect & Give Thanks")
@@ -99,7 +98,7 @@ if page == "Check-In":
         else:
             st.error("Please share something you're grateful for.")
 
-# --- Page: Daily Verse -------------------------------------------------
+# --- Page: Daily Verse ------------------------------------------------
 elif page == "Daily Verse":
     st.title("📜 Daily Bible Verse")
     category = st.selectbox("Choose category", list(BIBLE_VERSES.keys()))
@@ -111,24 +110,33 @@ elif page == "Daily Verse":
 # --- Page: Bible Wordle ------------------------------------------------
 elif page == "Bible Wordle":
     st.title("🟩 Bible Wordle 🟨")
-    # Kids Mode toggle
     kids_mode = st.checkbox("👶 Kids Mode: Unlimited tries & free-form guesses")
 
-    # Daily seed for target (or random on each reload if kids_mode)
-    if kids_mode:
-        random.seed(None)
-    else:
-        random.seed(int(date.today().strftime("%Y%m%d")))
-
-    target = random.choice(WORDLE_WORDS)
-
-    # Init session state
-    if "guesses" not in st.session_state:
+    # Initialize or reset bordle target in session_state
+    if "bordle" not in st.session_state:
+        st.session_state.bordle = {"mode": None, "date": None, "target": None}
         st.session_state.guesses = []
         st.session_state.solved = False
 
+    bordle = st.session_state.bordle
+    today = date.today()
+
+    # Decide when to pick/reset target
+    if kids_mode:
+        if bordle["mode"] != "kids":
+            bordle.update({"mode": "kids", "date": None, "target": random.choice(WORDLE_WORDS)})
+            st.session_state.guesses = []
+            st.session_state.solved = False
+    else:
+        if bordle["mode"] != "daily" or bordle["date"] != today:
+            bordle.update({"mode": "daily", "date": today, "target": random.choice(WORDLE_WORDS)})
+            st.session_state.guesses = []
+            st.session_state.solved = False
+
+    target = bordle["target"]
+
+    # Evaluation function
     def evaluate(word):
-        """Return Wordle feedback for any 5-letter word."""
         fb = []
         for i, ch in enumerate(word):
             if ch == target[i]:
@@ -139,30 +147,24 @@ elif page == "Bible Wordle":
                 fb.append("⬜")
         return "".join(fb)
 
-    # Only enforce 6-guess limit if not kids_mode
+    # Allow guesses
     can_guess = (kids_mode or len(st.session_state.guesses) < 6) and not st.session_state.solved
-
     if can_guess:
-        guess = st.text_input(
-            "Enter your 5-letter guess:",
-            max_chars=5,
-            key="bordle_input"
-        ).upper()
-
+        guess = st.text_input("Enter your 5-letter guess:", max_chars=5, key="bordle_input").upper()
         if st.button("Guess"):
             if len(guess) != 5 or not guess.isalpha():
                 st.error("Please enter exactly 5 letters.")
             else:
-                fb = evaluate(guess)
-                st.session_state.guesses.append((guess, fb))
+                feedback = evaluate(guess)
+                st.session_state.guesses.append((guess, feedback))
                 if guess == target:
                     st.session_state.solved = True
 
-    # Show history of guesses
+    # Display feedback history
     for g, fb in st.session_state.guesses:
         st.write(f"{g}   {fb}")
 
-    # Game end messages
+    # End-game messages
     if st.session_state.solved:
         st.success(f"You got it! The word was **{target}**.")
         st.balloons()
@@ -170,6 +172,7 @@ elif page == "Bible Wordle":
         st.error(f"Out of guesses—word was **{target}**.")
 
     if st.button("Reset"):
+        st.session_state.bordle = {"mode": None, "date": None, "target": None}
         st.session_state.guesses = []
         st.session_state.solved = False
 
@@ -188,7 +191,7 @@ elif page == "Verse Jumble":
         else:
             st.error("Not quite—try again!")
 
-# --- Page: History ------------------------------------------------------
+# --- Page: History -----------------------------------------------------
 elif page == "History":
     st.title("📚 Gratitude History")
     df = load_entries()
@@ -198,7 +201,7 @@ elif page == "History":
         df = df.sort_values("timestamp", ascending=False)
         st.table(df[["timestamp", "entry", "verse_ref"]])
 
-# --- Page: Achievements ------------------------------------------------
+# --- Page: Achievements -----------------------------------------------
 elif page == "Achievements":
     st.title("🏆 Achievements 🏆")
     df = load_entries()
@@ -222,13 +225,13 @@ elif page == "Achievements":
         else:
             st.markdown("_No badge yet—keep going!_")
 
-# --- Page: About --------------------------------------------------------
+# --- Page: About -------------------------------------------------------
 else:
     st.title("ℹ️ About This App")
     st.markdown("""
     **Daily Jesus Check-In** now includes:
     - A Bible-themed Wordle with **Kids Mode**  
-    - Free-form guesses & unlimited tries option  
+    - Free-form guesses & unlimited tries  
     - A fun Verse Jumble puzzle  
     - Streak-based Achievements  
 
