@@ -232,5 +232,5 @@ else:
     - A fun Verse Jumble puzzle  
     - Streak-based Achievements  
 
-    Built with 💖 by Chris Comiskey.
+    Built with 💖 by Eleanor.
     """)
